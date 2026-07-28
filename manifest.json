@@ -2,7 +2,7 @@
   "name": "Nexus Hub - Bảng Điều Hướng Cá Nhân",
   "short_name": "Nexus Hub",
   "description": "Tracker dinh dưỡng, tập gym và cân nặng cá nhân",
-  "start_url": "./nexus_hub.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f8fafc",
