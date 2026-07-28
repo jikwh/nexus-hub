@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Hub - Bảng Điều Hướng Cá Nhân</title>
+    <!-- PWA: cho phép cài như app, chạy offline, và có icon ngoài màn hình chính -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2563eb">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Nexus Hub">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-700 min-h-screen flex flex-col font-sans relative">
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold text-sm">Nexus Hub</div>
+                <h1 class="font-bold text-slate-800 text-base">Bảng Điều Hướng Cá Nhân</h1>
+            </div>
+            
+            <div id="realtimeClock" class="bg-slate-100 border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-mono font-bold">
+                --:--:-- --/--/----
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button onclick="requestNotificationPermission()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition border border-slate-200">🔔 Bật thông báo</button>
+                <button onclick="exportData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition border border-slate-200">Xuất File</button>
+                <label class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition border border-slate-200 cursor-pointer">
+                    Nhập File <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)">
+                </label>
+                <button onclick="resetData()" class="text-rose-600 hover:bg-rose-50 px-2 py-1.5 rounded-lg text-xs font-semibold transition">Xóa dữ liệu</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+
+        <!-- THANH CHUYỂN TAB -->
+        <div class="bg-white rounded-xl p-1.5 border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button onclick="switchTab('nutrition')" id="tabBtn-nutrition" class="py-2.5 px-4 rounded-lg text-xs font-bold transition bg-blue-600 text-white flex items-center justify-center">
+                <span>Tab 1: Dinh Dưỡng & Check-in</span>
+            </button>
+            <button onclick="switchTab('workout')" id="tabBtn-workout" class="py-2.5 px-4 rounded-lg text-xs font-bold transition bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center">
+                <span>Tab 2: Lịch Tập Gym & Bấm Giờ</span>
+            </button>
+            <button onclick="switchTab('chart')" id="tabBtn-chart" class="py-2.5 px-4 rounded-lg text-xs font-bold transition bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center">
+                <span>Tab 3: Biểu Đồ Tiến Độ</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: DINH DƯỠNG & CHECK-IN -->
+        <div id="tabContent-nutrition" class="space-y-6">
+
+            <!-- BANNER NHẮC TÁI TÍNH TDEE -->
+            <div id="tdeeReminderBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div class="flex items-center gap-2">
+                    <span>⏰</span>
+                    <span id="tdeeReminderText" class="font-medium">Đã lâu rồi bạn chưa tính lại TDEE. Cân nặng thay đổi thì nhu cầu calo cũng thay đổi theo!</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="jumpToTdeePanel()" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">Tính lại ngay</button>
+                    <button onclick="dismissTdeeReminder()" class="text-amber-600 hover:text-amber-800 font-semibold px-2">Bỏ qua</button>
+                </div>
+            </div>
+
+            <!-- MINI INSIGHT TUẦN -->
+            <div id="weeklyInsightCard" class="bg-slate-800 text-white rounded-xl px-5 py-4 space-y-1">
+                <div class="text-[10px] tracking-wider uppercase text-slate-400 font-semibold">Tóm Tắt Tuần Này</div>
+                <p id="weeklyInsightText" class="text-sm leading-relaxed">Đang tổng hợp dữ liệu...</p>
+            </div>
+
+            <!-- THẺ THỐNG KÊ KÈM THANH TIẾN ĐỘ (PROGRESS BARS) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Calo Progress -->
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-500 font-medium">Calo</span>
+                        <span id="calProgressPercent" class="font-bold text-blue-600">0%</span>
+                    </div>
+                    <div class="font-extrabold text-lg text-slate-800" id="totalCalStat">0 / 2000 kcal</div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div id="calProgressBar" class="bg-blue-600 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Protein Progress -->
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-500 font-medium">Protein</span>
+                        <span id="pProgressPercent" class="font-bold text-emerald-600">0%</span>
+                    </div>
+                    <div class="font-extrabold text-lg text-slate-800" id="totalPStat">0.0 / 150g</div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div id="pProgressBar" class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Carb Progress -->
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-500 font-medium">Carb</span>
+                        <span id="cProgressPercent" class="font-bold text-amber-600">0%</span>
+                    </div>
+                    <div class="font-extrabold text-lg text-slate-800" id="totalCStat">0.0 / 200g</div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div id="cProgressBar" class="bg-amber-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Fat Progress -->
+                <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-500 font-medium">Fat</span>
+                        <span id="fProgressPercent" class="font-bold text-rose-600">0%</span>
+                    </div>
+                    <div class="font-extrabold text-lg text-slate-800" id="totalFStat">0.0 / 60g</div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div id="fProgressBar" class="bg-rose-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BỘ TÍNH TDEE / BMR TÍCH HỢP -->
+            <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-4">
+                <div class="flex justify-between items-center cursor-pointer" onclick="toggleTdeePanel()">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <span>⚙️ Công Cụ Tính TDEE / BMR & Thiết Lập Mục Tiêu</span>
+                        </h3>
+                        <p class="text-xs text-slate-400">Tự động tính toán nhu cầu calo mỗi ngày dựa trên chỉ số cơ thể.</p>
+                    </div>
+                    <span id="tdeeToggleIcon" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">Mở bảng tính</span>
+                </div>
+
+                <div id="tdeePanel" class="hidden pt-3 border-t border-slate-100 space-y-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-500 font-medium mb-1">Giới tính</label>
+                            <select id="tdeeGender" class="w-full text-xs border border-slate-200 rounded-lg p-2 bg-slate-50 focus:outline-none">
+                                <option value="male">Nam</option>
+                                <option value="female">Nữ</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 font-medium mb-1">Tuổi</label>
+                            <input type="number" id="tdeeAge" value="25" class="w-full text-xs border border-slate-200 rounded-lg p-2 bg-slate-50 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 font-medium mb-1">Chiều cao (cm)</label>
+                            <input type="number" id="tdeeHeight" value="170" class="w-full text-xs border border-slate-200 rounded-lg p-2 bg-slate-50 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 font-medium mb-1">Cân nặng (kg)</label>
+                            <input type="number" id="tdeeWeight" value="65" class="w-full text-xs border border-slate-200 rounded-lg p-2 bg-slate-50 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-slate-500 font-medium mb-1">Mức độ vận động</label>
+                            <select id="tdeeActivity" class="w-full text-xs border border-slate-200 rounded-lg p-2 bg-slate-50 focus:outline-none">
+                                <option value="1.2">Ít vận động (Ngồi văn phòng)</option>
+                                <option value="1.375">Vận động nhẹ (Tập 1-3 buổi/tuần)</option>
+                                <option value="1.55" selected>Vận động vừa (Tập 3-5 buổi/tuần)</option>
+                                <option value="1.725">Vận động nhiều (Tập 6-7 buổi/tuần)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-500 font-medium mb-1">Mục tiêu cân nặng</label>
+                            <select id="tdeeGoal" class="w-full text-xs border border-slate-200 rounded-lg p-2 bg-slate-50 focus:outline-none">
+                                <option value="maintain">Giữ cân nguyên hiện trạng</option>
+                                <option value="cut">Giảm cân / Thâm hụt Calo (-15%)</option>
+                                <option value="recomp" selected>Tăng cơ giảm mỡ (Recomp - Thâm hụt nhẹ -10%)</option>
+                                <option value="bulk">Tăng cơ / Thặng dư Calo (+15%)</option>
+                            </select>
+                            <p class="text-[10px] text-slate-400 mt-1">Có tiền sử gout: protein được set ở mức an toàn (~2g/kg), ưu tiên nguồn ít purine (trứng, ức gà, đậu hũ, sữa) thay vì hải sản/nội tạng/thịt đỏ.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200 flex-wrap gap-2">
+                        <div class="text-xs space-x-3">
+                            <span>BMR: <b id="bmrResult" class="text-slate-800">0</b> kcal</span>
+                            <span>|</span>
+                            <span>TDEE: <b id="tdeeResult" class="text-slate-800">0</b> kcal</span>
+                        </div>
+                        <button onclick="calculateAndApplyTdee()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">
+                            Áp Dụng Làm Mục Tiêu Mới
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- CỘT TRÁI: DÒNG THỜI GIAN -->
+                <section class="lg:col-span-4 bg-white rounded-xl p-5 border border-slate-200 shadow-sm flex flex-col h-fit space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="font-bold text-slate-800 text-sm">Dòng Thời Gian</h2>
+                        <button onclick="goToToday()" id="currentDateLabel" class="text-xs text-blue-600 font-semibold bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md transition border border-blue-200">Hôm nay</button>
+                    </div>
+                    <div>
+                        <select id="weekSelector" onchange="changeWeek()" class="w-full text-xs font-medium border border-slate-200 rounded-lg p-2.5 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-700"></select>
+                    </div>
+                    <div id="daysList" class="space-y-2 max-h-[480px] overflow-y-auto pr-1"></div>
+                </section>
+
+                <!-- CỘT PHẢI: CHECK-IN SÁNG + DINH DƯỠNG -->
+                <section class="lg:col-span-8 space-y-6">
+                    <!-- BANNER NGÀY ĐANG CHỌN -->
+                    <div class="bg-blue-600 text-white rounded-xl px-6 py-4 flex justify-between items-center shadow-sm">
+                        <div>
+                            <span id="selectedDateTitle" class="text-[10px] tracking-wider uppercase text-blue-100 font-semibold">NGÀY ĐANG CHỌN</span>
+                            <h3 id="selectedDateFull" class="text-lg font-bold mt-0.5">Thứ...</h3>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-blue-100 block">Cân nặng ngày này</span>
+                            <span class="text-xl font-extrabold text-white" id="totalWeightStat">-- kg</span>
+                        </div>
+                    </div>
+
+                    <!-- KHỐI CHECK-IN SÁNG (CÂN NẶNG & GIẤC NGỦ) -->
+                    <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-sm space-y-3">
+                        <h3 class="font-bold text-slate-800 text-sm">Check-in Buổi Sáng (Cân Nặng & Giấc Ngủ)</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                            <!-- Cân nặng -->
+                            <div class="bg-slate-50 border border-slate-200 p-3 rounded-lg space-y-2">
+                                <label class="block text-xs text-slate-600 font-medium">Cân nặng sáng nay (kg)</label>
+                                <div class="flex gap-2">
+                                    <input type="number" id="weightInput" step="0.1" class="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                    <button onclick="saveWeight()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition">Lưu</button>
+                                </div>
+                            </div>
+                            <!-- Giờ ngủ -->
+                            <div class="bg-slate-50 border border-slate-200 p-3 rounded-lg space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <label class="block text-xs text-slate-600 font-medium">Giờ ngủ tối qua</label>
+                                    <span id="sleepFeedbackBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600">Chưa nhập</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <input type="time" id="sleepStartInput" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
+                                    <input type="time" id="sleepEndInput" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
+                                </div>
+                                <button onclick="saveSleepData()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded-lg text-xs font-semibold transition">Lưu & Phân Tích Giấc Ngủ</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FORM NHẬP DINH DƯỠNG THỦ CÔNG -->
+                    <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-4">
+                        <h3 class="font-bold text-slate-800 text-sm">Nhập Dinh Dưỡng Thủ Công</h3>
+                        
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs text-slate-500 font-medium mb-1">Tên món ăn</label>
+                                    <input type="text" id="foodNameInput" class="w-full text-sm border border-slate-200 rounded-lg px-3.5 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 font-medium mb-1">Buổi ăn</label>
+                                    <select id="foodMealSelect" class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-700">
+                                        <option value="Sáng">Buổi sáng</option>
+                                        <option value="Trưa">Buổi trưa</option>
+                                        <option value="Tối">Buổi tối</option>
+                                        <option value="Bữa phụ">Bữa phụ</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="block text-xs text-slate-500 font-medium mb-1">Calo (kcal)</label>
+                                    <input type="number" id="foodCalInput" min="0" step="any" class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 font-medium mb-1">Protein (g)</label>
+                                    <input type="number" id="foodPInput" min="0" step="any" class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 font-medium mb-1">Carb (g)</label>
+                                    <input type="number" id="foodCInput" min="0" step="any" class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-slate-500 font-medium mb-1">Fat (g)</label>
+                                    <input type="number" id="foodFInput" min="0" step="any" class="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                                </div>
+                            </div>
+
+                            <div class="flex gap-2 mt-1">
+                                <button id="foodSubmitBtn" onclick="addManualFood()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">
+                                    Thêm Món Vào Ngày Này
+                                </button>
+                                <button id="foodCancelBtn" onclick="cancelEditFood()" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-2.5 px-4 rounded-lg text-sm transition border border-slate-200">
+                                    Hủy
+                                </button>
+                            </div>
+                            <button onclick="saveCurrentAsFavorite()" class="w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-semibold py-2 rounded-lg text-xs transition">
+                                ⭐ Lưu món này vào danh sách yêu thích
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- MÓN ĂN YÊU THÍCH / QUICK ADD -->
+                    <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-3">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">⭐ Món Ăn Yêu Thích (Quick Add)</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">Bấm "+ Thêm" để thêm ngay vào ngày đang chọn, khỏi phải gõ lại số liệu.</p>
+                        </div>
+                        <div id="favoriteFoodListContainer" class="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                            <p class="text-xs text-slate-400 text-center py-4">Chưa có món yêu thích nào. Nhập món ăn ở trên rồi bấm "Lưu món này vào danh sách yêu thích".</p>
+                        </div>
+                    </div>
+
+                    <!-- DANH SÁCH MÓN ĐÃ ĂN -->
+                    <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-3">
+                        <h3 class="font-bold text-slate-800 text-sm">Danh Sách Món Đã Ăn</h3>
+                        <div id="foodListContainer" class="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                            <p class="text-xs text-slate-400 text-center py-4">Chưa có dữ liệu ăn uống hôm nay.</p>
+                        </div>
+                    </div>
+
+                    <!-- THÓI QUEN / TODO -->
+                    <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-3">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-slate-800 text-sm">Thói quen / Todo</h3>
+                            <button onclick="addNewTaskPrompt()" class="text-xs text-blue-600 font-semibold hover:underline">+ Thêm</button>
+                        </div>
+                        <div id="todoListContainer" class="space-y-2 max-h-[160px] overflow-y-auto pr-1"></div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- TAB 2: LỊCH TẬP GYM & BẤM GIỜ -->
+        <div id="tabContent-workout" class="hidden space-y-6">
+            <!-- ĐỒNG HỒ BẤM GIỜ -->
+            <div class="bg-slate-800 text-white rounded-xl p-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Đồng Hồ Bấm Giờ Nghỉ / Tập</span>
+                    <div id="stopwatchDisplay" class="text-3xl font-mono font-extrabold mt-1">00:00:00</div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="startStopwatch()" class="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-lg text-xs font-bold transition">Bắt Đầu</button>
+                    <button onclick="pauseStopwatch()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition">Tạm Dừng</button>
+                    <button onclick="resetStopwatch()" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-xs font-bold transition">Đặt Lại</button>
+                </div>
+            </div>
+
+            <!-- LỊCH TẬP GYM 3 THÁNG -->
+            <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div class="flex flex-wrap justify-between items-center border-b border-slate-100 pb-4 gap-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">Kế Hoạch Tập Luyện Dài Hạn</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">Tự động điều chỉnh theo từng tuần/tháng.</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <span id="workoutDateBadge" class="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200">Đang chọn: Hôm nay</span>
+                        <button onclick="addWorkoutPrompt()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition">+ Thêm Bài Tập</button>
+                    </div>
+                </div>
+
+                <!-- THANH TIẾN ĐỘ HOÀN THÀNH BUỔI TẬP -->
+                <div id="workoutProgressWrap" class="hidden bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1.5">
+                    <div class="flex justify-between items-center">
+                        <span id="workoutProgressText" class="text-xs font-semibold text-slate-600">Tiến độ: 0/0 bài (0%)</span>
+                        <span id="workoutProgressBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                        <div id="workoutProgressBar" class="bg-emerald-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div id="workoutListContainer" class="space-y-3 min-h-[250px]">
+                    <p class="text-xs text-slate-400 text-center py-16">Chưa có lịch tập cho ngày này.</p>
+                </div>
+            </div>
+
+            <!-- THƯ VIỆN BÀI TẬP THEO NHÓM CƠ (DÙNG ĐỂ TẬP BÙ) -->
+            <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div class="flex justify-between items-center cursor-pointer" onclick="toggleLibraryPanel()">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <span>📚 Thư Viện Bài Tập Theo Nhóm Cơ (Tập Bù)</span>
+                        </h3>
+                        <p class="text-xs text-slate-400">Lỡ mất buổi tập ngày khác? Chọn nhóm cơ tương ứng rồi thêm bài vào ngày đang chọn để tập bù.</p>
+                    </div>
+                    <span id="libraryToggleIcon" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">Mở thư viện</span>
+                </div>
+                <div id="libraryPanel" class="hidden pt-3 border-t border-slate-100 space-y-3">
+                    <p class="text-xs text-slate-500">Bài tập chọn bên dưới sẽ được thêm vào lịch của ngày: <b id="libraryTargetDay" class="text-blue-600">Hôm nay</b>. Muốn tập bù cho ngày khác, hãy sang khối "Dòng Thời Gian" ở Tab 1 để chọn đúng ngày đó trước. Bài tập bù sẽ cộng thẳng vào tổng số bài của ngày đó, nên thanh tiến độ luôn tính đúng 100% khi bạn hoàn thành hết toàn bộ (dù là 4, 6 hay 7 bài).</p>
+                    <div class="flex flex-wrap gap-2" id="muscleGroupTabs"></div>
+                    <div id="muscleExerciseList" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: BIỂU ĐỒ TIẾN ĐỘ -->
+        <div id="tabContent-chart" class="hidden space-y-6">
+            <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div>
+                    <h3 class="font-bold text-slate-800 text-base">Biểu Đồ Xu Hướng Cân Nặng</h3>
+                    <p class="text-xs text-slate-400 mt-0.5">Theo dõi sự thay đổi cân nặng qua từng ngày đã lưu.</p>
+                </div>
+                <div class="w-full h-80 pt-2">
+                    <canvas id="weightChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl p-6 border border-slate-200 shadow-sm space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">Tiến Bộ Sức Mạnh (Progressive Overload)</h3>
+                        <p class="text-xs text-slate-400 mt-0.5">Theo dõi mức tạ đã ghi nhận qua từng buổi tập cho một bài tập cụ thể.</p>
+                    </div>
+                    <select id="progressExerciseSelect" onchange="updateProgressChart()" class="text-xs font-medium border border-slate-200 rounded-lg p-2 bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:outline-none text-slate-700 min-w-[220px]"></select>
+                </div>
+                <div id="progressChartEmptyState" class="text-xs text-slate-400 text-center py-16">
+                    Chưa có dữ liệu mức tạ. Vào Tab 2, ghi lại mức tạ/reps thực tế ở mỗi bài tập để xem tiến bộ tại đây.
+                </div>
+                <div id="progressChartWrap" class="hidden w-full h-72 pt-2">
+                    <canvas id="progressChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- SCRIPT LOGIC -->
+    <script>
+        // HÀM TOAST THÔNG BÁO XỊN XÒ
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const bgClass = type === 'success' ? 'bg-slate-900 text-white' : 'bg-rose-600 text-white';
+            
+            toast.className = `${bgClass} text-xs font-medium px-4 py-3 rounded-xl shadow-lg transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto flex items-center gap-2`;
+            toast.innerHTML = `<span>${type === 'success' ? '✅' : '⚠️'}</span> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function updateRealtimeClock() {
+            const now = new Date();
+            let hours = String(now.getHours()).padStart(2, '0');
+            let minutes = String(now.getMinutes()).padStart(2, '0');
+            let seconds = String(now.getSeconds()).padStart(2, '0');
+            let day = String(now.getDate()).padStart(2, '0');
+            let month = String(now.getMonth() + 1).padStart(2, '0');
+            let year = now.getFullYear();
+            document.getElementById('realtimeClock').textContent = `${hours}:${minutes}:${seconds} - ${day}/${month}/${year}`;
+        }
+        setInterval(updateRealtimeClock, 1000);
+        updateRealtimeClock();
+
+        let stopwatchSeconds = 0;
+        let stopwatchInterval = null;
+        function startStopwatch() {
+            if (stopwatchInterval) return;
+            stopwatchInterval = setInterval(() => {
+                stopwatchSeconds++;
+                let h = String(Math.floor(stopwatchSeconds / 3600)).padStart(2, '0');
+                let m = String(Math.floor((stopwatchSeconds % 3600) / 60)).padStart(2, '0');
+                let s = String(stopwatchSeconds % 60).padStart(2, '0');
+                document.getElementById('stopwatchDisplay').textContent = `${h}:${m}:${s}`;
+            }, 1000);
+        }
+        function pauseStopwatch() {
+            clearInterval(stopwatchInterval);
+            stopwatchInterval = null;
+        }
+        function resetStopwatch() {
+            pauseStopwatch();
+            stopwatchSeconds = 0;
+            document.getElementById('stopwatchDisplay').textContent = "00:00:00";
+        }
+
+        function getWorkoutPlanForMonth(monthNum, weekNum) {
+            let repsCompound = "10-12";
+            let cardioMins = 20;
+
+            if (monthNum === 2) {
+                repsCompound = "8-10";
+                cardioMins = 25;
+            } else if (monthNum >= 3) {
+                repsCompound = "6-8";
+                cardioMins = 30;
+            }
+
+            let isDeloadWeek = (weekNum % 4 === 0); // Deload mỗi 4 tuần thay vì chỉ tuần 12
+            let cardioNote = isDeloadWeek ? `${cardioMins} phút (Tuần ${weekNum}: Deload)` : `${cardioMins} phút`;
+
+            return {
+                0: [
+                    { name: `Bench Press - 4 sets x ${repsCompound} reps` },
+                    { name: "Incline Dumbbell Press - 3 sets x 10-12 reps" },
+                    { name: "Shoulder Press - 3 sets x 10-12 reps" },
+                    { name: "Lateral Raise - 3 sets x 12-15 reps" }
+                ],
+                1: [
+                    { name: `Squat - 4 sets x ${repsCompound} reps` },
+                    { name: "Romanian Deadlift - 3 sets x 10-12 reps" },
+                    { name: "Leg Press - 3 sets x 12-15 reps" },
+                    { name: "Standing Calf Raise - 3 sets x 15-20 reps" }
+                ],
+                2: [],
+                3: [
+                    { name: `Lat Pulldown - 4 sets x ${repsCompound} reps` },
+                    { name: "Barbell Row - 3 sets x 10-12 reps" },
+                    { name: "Seated Cable Row - 3 sets x 10-12 reps" },
+                    { name: "Bicep Curl - 3 sets x 12-15 reps" }
+                ],
+                4: [
+                    { name: "Goblet Squat - 3 sets x 10-12 reps" },
+                    { name: "Push-up - 3 sets x 12-15 reps" },
+                    { name: "Plank - 3 sets x 45-60 giây" },
+                    { name: `Cardio - ${cardioNote}` }
+                ],
+                5: [],
+                6: []
+            };
+        }
+
+        let appData = JSON.parse(localStorage.getItem('nexus_tracker_v21')) || {};
+        let userTargets = JSON.parse(localStorage.getItem('nexus_user_targets')) || { cal: 2000, p: 150, c: 200, f: 60 };
+        let selectedDateKey = formatDateKey(new Date());
+        let weeksData = [];
+        let weightChartInstance = null;
+
+        function switchTab(tabName) {
+            ['nutrition', 'workout', 'chart'].forEach(t => {
+                document.getElementById(`tabContent-${t}`).classList.add('hidden');
+                let btn = document.getElementById(`tabBtn-${t}`);
+                btn.className = "py-2.5 px-4 rounded-lg text-xs font-bold transition bg-slate-50 text-slate-600 hover:bg-slate-100 flex items-center justify-center";
+            });
+            document.getElementById(`tabContent-${tabName}`).classList.remove('hidden');
+            let activeBtn = document.getElementById(`tabBtn-${tabName}`);
+            activeBtn.className = "py-2.5 px-4 rounded-lg text-xs font-bold transition bg-blue-600 text-white flex items-center justify-center";
+            
+            if(tabName === 'chart') {
+                updateWeightChart();
+                renderProgressExerciseOptions();
+                updateProgressChart();
+            }
+        }
+
+        function initTimeline() {
+            weeksData = [];
+            let startDate = new Date();
+            let day = startDate.getDay();
+            let diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
+            startDate = new Date(startDate.setDate(diff));
+
+            const TOTAL_WEEKS = 28; // ~6.5 tháng, khớp với kế hoạch cắt mỡ dài hạn
+            for (let w = 0; w < TOTAL_WEEKS; w++) {
+                let weekDays = [];
+                let weekNum = w + 1;
+                let monthNum = Math.ceil(weekNum / 4);
+                let plans = getWorkoutPlanForMonth(monthNum, weekNum);
+
+                for (let d = 0; d < 7; d++) {
+                    let curr = new Date(startDate);
+                    curr.setDate(startDate.getDate() + (w * 7) + d);
+                    let key = formatDateKey(curr);
+                    weekDays.push({
+                        dateObj: curr,
+                        key: key,
+                        display: `${getDayName(curr.getDay())}, ${curr.getDate()}/${curr.getMonth() + 1}`,
+                        defaultWorkout: plans[d] || []
+                    });
+                }
+                weeksData.push({ weekIndex: weekNum, month: monthNum, days: weekDays });
+            }
+
+            if (!localStorage.getItem('nexus_tracker_v21')) {
+                weeksData.forEach(week => {
+                    week.days.forEach((day) => {
+                        ensureDayData(day.key);
+                        appData[day.key].workouts = JSON.parse(JSON.stringify(day.defaultWorkout));
+                    });
+                });
+                saveToLocalStorage();
+            }
+
+            renderWeekSelector();
+            selectDate(selectedDateKey);
+            initWeightChart();
+            checkTdeeReminder();
+            renderFavoriteFoods();
+        }
+
+        function formatDateKey(date) {
+            // Dùng giờ local thay vì toISOString() (vốn convert sang UTC và làm lệch ngày
+            // với các mốc thời gian trước 7h sáng giờ VN, do VN là UTC+7)
+            let y = date.getFullYear();
+            let m = String(date.getMonth() + 1).padStart(2, '0');
+            let d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        function getDayName(idx) { return ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"][idx]; }
+
+        function renderWeekSelector() {
+            const select = document.getElementById('weekSelector');
+            select.innerHTML = '';
+            weeksData.forEach((week, idx) => {
+                let opt = document.createElement('option');
+                opt.value = idx;
+                opt.textContent = `Tuần hiện tại (${week.days[0].key} ➔ ${week.days[6].key})`;
+                select.appendChild(opt);
+            });
+        }
+
+        function changeWeek() {
+            let weekIdx = document.getElementById('weekSelector').value;
+            renderDaysList(weeksData[weekIdx].days);
+            renderWeeklyInsight(weeksData[weekIdx].days);
+        }
+
+        function renderDaysList(days) {
+            const container = document.getElementById('daysList');
+            container.innerHTML = '';
+            days.forEach(day => {
+                let isSelected = day.key === selectedDateKey;
+                let dayData = appData[day.key] || { foods: [], workouts: [], todos: getDefaultTodos(), weight: null, sleep: null };
+                let totalCals = dayData.foods.reduce((sum, f) => sum + (Number(f.cal) || 0), 0);
+                let workoutDoneBadge = '';
+                if (dayData.workouts && dayData.workouts.length > 0) {
+                    let doneCount = dayData.workouts.filter(w => w.done).length;
+                    if (doneCount === dayData.workouts.length) {
+                        workoutDoneBadge = `<span class="text-emerald-600 text-[10px] font-bold ml-1" title="Đã hoàn thành buổi tập">💪✓</span>`;
+                    }
+                }
+
+                let div = document.createElement('div');
+                div.className = `p-3 rounded-lg border transition cursor-pointer flex justify-between items-center ${isSelected ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}`;
+                div.onclick = () => selectDate(day.key);
+                div.innerHTML = `
+                    <div>
+                        <div class="font-bold text-xs ${isSelected ? 'text-blue-700' : 'text-slate-700'}">${day.display}${workoutDoneBadge}</div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs font-bold text-slate-800">${Math.round(totalCals)} kcal</span>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderWeeklyInsight(days) {
+            const el = document.getElementById('weeklyInsightText');
+            let todayKey = formatDateKey(new Date());
+
+            // Chỉ tính những ngày đã qua (hoặc hôm nay) trong tuần đang xem, bỏ qua ngày tương lai
+            let pastDays = days.filter(d => d.key <= todayKey);
+            if (pastDays.length === 0) {
+                el.textContent = "Tuần này chưa có dữ liệu (đang là tuần tương lai). Chọn ngày rồi bắt đầu ghi nhận nhé!";
+                return;
+            }
+
+            let daysWithFood = 0, daysHitCalTarget = 0, totalWorkoutsLogged = 0;
+            let sleepHoursList = [];
+            let weightsInWeek = [];
+
+            pastDays.forEach(d => {
+                let dd = appData[d.key];
+                if (!dd) return;
+                if (dd.foods && dd.foods.length > 0) {
+                    daysWithFood++;
+                    let cal = dd.foods.reduce((s, f) => s + (Number(f.cal) || 0), 0);
+                    if (cal >= userTargets.cal * 0.9 && cal <= userTargets.cal * 1.1) daysHitCalTarget++;
+                }
+                if (dd.workouts && dd.workouts.length > 0) totalWorkoutsLogged++;
+                if (dd.sleep && dd.sleep.hours) sleepHoursList.push(dd.sleep.hours);
+                if (dd.weight) weightsInWeek.push(dd.weight);
+            });
+
+            if (daysWithFood === 0) {
+                el.textContent = `Tuần này (${pastDays.length} ngày đã qua) bạn chưa ghi món ăn nào. Ghi lại đều đặn để mình tổng hợp insight cho bạn nhé!`;
+                return;
+            }
+
+            let avgSleep = sleepHoursList.length ? (sleepHoursList.reduce((a, b) => a + b, 0) / sleepHoursList.length) : null;
+            let weightChangeText = "";
+            if (weightsInWeek.length >= 2) {
+                let diff = weightsInWeek[weightsInWeek.length - 1] - weightsInWeek[0];
+                let dir = diff < 0 ? "giảm" : (diff > 0 ? "tăng" : "giữ nguyên");
+                weightChangeText = `, cân nặng ${dir} ${Math.abs(diff).toFixed(1)}kg`;
+            }
+
+            let parts = [];
+            parts.push(`Bạn đã log ăn uống ${daysWithFood}/${pastDays.length} ngày`);
+            parts.push(`đạt mục tiêu calo ${daysHitCalTarget}/${daysWithFood} ngày đã log`);
+            if (avgSleep !== null) parts.push(`ngủ trung bình ${avgSleep.toFixed(1)}h/đêm`);
+            parts.push(`tập ${totalWorkoutsLogged}/${pastDays.length} ngày`);
+
+            el.textContent = parts.join(", ") + weightChangeText + ".";
+        }
+
+        function selectDate(key) {
+            selectedDateKey = key;
+            let dateObj = new Date(key);
+            let dateStr = `${getDayName(dateObj.getDay())}, Ngày ${dateObj.getDate()} tháng ${dateObj.getMonth() + 1}, ${dateObj.getFullYear()}`;
+            
+            document.getElementById('selectedDateFull').textContent = dateStr;
+            document.getElementById('workoutDateBadge').textContent = `Đang chọn: ${getDayName(dateObj.getDay())}, ${dateObj.getDate()}/${dateObj.getMonth() + 1}`;
+            
+            let weekIdx = document.getElementById('weekSelector').value;
+            renderDaysList(weeksData[weekIdx].days);
+            renderSelectedDayDetails();
+            renderWeeklyInsight(weeksData[weekIdx].days);
+        }
+
+        function goToToday() {
+            selectDate(formatDateKey(new Date()));
+        }
+
+        function getDefaultTodos() {
+            return [
+                { text: "Uống đủ nước (theo kế hoạch)", done: false }, 
+                { text: "Ngủ đủ 7–8 tiếng phục hồi cơ", done: false }
+            ];
+        }
+
+        function ensureDayData(key) {
+            if (!appData[key]) appData[key] = { foods: [], workouts: [], todos: getDefaultTodos(), weight: null, sleep: null };
+            if (!appData[key].foods) appData[key].foods = [];
+            if (!appData[key].workouts) appData[key].workouts = [];
+            if (!appData[key].todos) appData[key].todos = getDefaultTodos();
+        }
+
+        // TÍNH BMR & TDEE LOGIC
+        function toggleTdeePanel() {
+            const panel = document.getElementById('tdeePanel');
+            const icon = document.getElementById('tdeeToggleIcon');
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                icon.textContent = "Thu gọn";
+            } else {
+                panel.classList.add('hidden');
+                icon.textContent = "Mở bảng tính";
+            }
+        }
+
+        function calculateAndApplyTdee() {
+            let gender = document.getElementById('tdeeGender').value;
+            let age = parseFloat(document.getElementById('tdeeAge').value) || 25;
+            let height = parseFloat(document.getElementById('tdeeHeight').value) || 170;
+            let weight = parseFloat(document.getElementById('tdeeWeight').value) || 65;
+            let activity = parseFloat(document.getElementById('tdeeActivity').value) || 1.55;
+            let goal = document.getElementById('tdeeGoal').value;
+
+            // Công thức Mifflin-St Jeor
+            let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (gender === 'male' ? 5 : -161);
+            let tdee = bmr * activity;
+
+            if (goal === 'cut') tdee *= 0.85; // Thâm hụt 15%
+            if (goal === 'recomp') tdee *= 0.90; // Recomp: thâm hụt nhẹ 10% để vừa giảm mỡ vừa giữ/tăng cơ
+            if (goal === 'bulk') tdee *= 1.15; // Thặng dư 15%
+
+            let targetCal = Math.round(tdee);
+            // Protein giữ ở mức 2g/kg cho mọi mục tiêu (kể cả recomp) — đủ để giữ/tăng cơ nhưng không đẩy protein
+            // quá cao, vì tiền sử gout cần thận trọng với tổng lượng đạm nạp vào, ưu tiên nguồn ít purine.
+            let targetP = Math.round(weight * 2.0);
+            let targetF = Math.round((targetCal * 0.25) / 9); // 25% calo từ Fat
+            let targetC = Math.round((targetCal - (targetP * 4) - (targetF * 9)) / 4); // Còn lại là Carb
+
+            document.getElementById('bmrResult').textContent = Math.round(bmr);
+            document.getElementById('tdeeResult').textContent = Math.round(tdee);
+
+            userTargets = { cal: targetCal, p: targetP, c: targetC, f: targetF, lastCalculated: formatDateKey(new Date()), lastWeightAtCalc: weight };
+            localStorage.setItem('nexus_user_targets', JSON.stringify(userTargets));
+
+            showToast(`Đã áp dụng mục tiêu mới: ${targetCal} kcal/ngày!`);
+            renderSelectedDayDetails();
+            checkTdeeReminder();
+        }
+
+        // NHẮC NHỞ TÁI TÍNH TDEE ĐỊNH KỲ
+        function checkTdeeReminder() {
+            const banner = document.getElementById('tdeeReminderBanner');
+            const text = document.getElementById('tdeeReminderText');
+            const REMIND_AFTER_DAYS = 14;
+
+            if (userTargets.snoozeUntil && formatDateKey(new Date()) < userTargets.snoozeUntil) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            if (!userTargets.lastCalculated) {
+                banner.classList.remove('hidden');
+                text.textContent = "Bạn chưa từng tính TDEE — nên tính ngay để có mục tiêu calo/macro chính xác cho kế hoạch dài hạn!";
+                return;
+            }
+
+            let last = new Date(userTargets.lastCalculated);
+            let today = new Date(formatDateKey(new Date()));
+            let daysSince = Math.floor((today - last) / (1000 * 60 * 60 * 24));
+
+            // Tìm cân nặng mới nhất đã lưu để so sánh với lúc tính TDEE gần nhất
+            let latestWeight = null;
+            Object.keys(appData).sort().forEach(key => {
+                if (appData[key] && appData[key].weight) latestWeight = appData[key].weight;
+            });
+            let weightDrift = (latestWeight && userTargets.lastWeightAtCalc) ? Math.abs(latestWeight - userTargets.lastWeightAtCalc) : 0;
+
+            if (daysSince >= REMIND_AFTER_DAYS || weightDrift >= 2) {
+                banner.classList.remove('hidden');
+                if (weightDrift >= 2) {
+                    text.textContent = `Cân nặng đã thay đổi ${weightDrift.toFixed(1)}kg kể từ lần tính TDEE gần nhất (${daysSince} ngày trước). Nên tính lại để mục tiêu calo sát với cơ thể hiện tại!`;
+                } else {
+                    text.textContent = `Đã ${daysSince} ngày kể từ lần tính TDEE gần nhất. Cân nặng thay đổi thì nhu cầu calo cũng thay đổi theo, tính lại để không bị lệch mục tiêu nhé!`;
+                }
+                // Chỉ bắn 1 local notification/ngày, tránh làm phiền mỗi lần mở app
+                let todayKey = formatDateKey(new Date());
+                if (userTargets.lastTdeeNotifDate !== todayKey) {
+                    sendLocalNotification("Nexus Hub ⏰", text.textContent);
+                    userTargets.lastTdeeNotifDate = todayKey;
+                    localStorage.setItem('nexus_user_targets', JSON.stringify(userTargets));
+                }
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        function jumpToTdeePanel() {
+            const panel = document.getElementById('tdeePanel');
+            if (panel.classList.contains('hidden')) toggleTdeePanel();
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function dismissTdeeReminder() {
+            document.getElementById('tdeeReminderBanner').classList.add('hidden');
+            // Bỏ qua thì lùi mốc nhắc thêm 3 ngày, tránh làm phiền liên tục
+            let snoozeUntil = new Date();
+            snoozeUntil.setDate(snoozeUntil.getDate() + 3);
+            userTargets.snoozeUntil = formatDateKey(snoozeUntil);
+            localStorage.setItem('nexus_user_targets', JSON.stringify(userTargets));
+        }
+
+        function renderSelectedDayDetails() {
+            ensureDayData(selectedDateKey);
+            let dayData = appData[selectedDateKey];
+
+            let totalCal = 0, totalP = 0, totalC = 0, totalF = 0;
+            dayData.foods.forEach(item => {
+                totalCal += Number(item.cal) || 0;
+                totalP += Number(item.p) || 0;
+                totalC += Number(item.c) || 0;
+                totalF += Number(item.f) || 0;
+            });
+
+            // Cập nhật Thanh Tiến Độ (Progress Bars)
+            let calPct = Math.min(Math.round((totalCal / userTargets.cal) * 100), 100);
+            let pPct = Math.min(Math.round((totalP / userTargets.p) * 100), 100);
+            let cPct = Math.min(Math.round((totalC / userTargets.c) * 100), 100);
+            let fPct = Math.min(Math.round((totalF / userTargets.f) * 100), 100);
+
+            document.getElementById('totalCalStat').textContent = `${Math.round(totalCal)} / ${userTargets.cal} kcal`;
+            document.getElementById('calProgressBar').style.width = `${calPct}%`;
+            document.getElementById('calProgressPercent').textContent = `${calPct}%`;
+
+            document.getElementById('totalPStat').textContent = `${totalP.toFixed(1)} / ${userTargets.p}g`;
+            document.getElementById('pProgressBar').style.width = `${pPct}%`;
+            document.getElementById('pProgressPercent').textContent = `${pPct}%`;
+
+            document.getElementById('totalCStat').textContent = `${totalC.toFixed(1)} / ${userTargets.c}g`;
+            document.getElementById('cProgressBar').style.width = `${cPct}%`;
+            document.getElementById('cProgressPercent').textContent = `${cPct}%`;
+
+            document.getElementById('totalFStat').textContent = `${totalF.toFixed(1)} / ${userTargets.f}g`;
+            document.getElementById('fProgressBar').style.width = `${fPct}%`;
+            document.getElementById('fProgressPercent').textContent = `${fPct}%`;
+
+            document.getElementById('totalWeightStat').textContent = dayData.weight ? dayData.weight + ' kg' : '-- kg';
+            document.getElementById('weightInput').value = dayData.weight || '';
+
+            // Cập nhật giấc ngủ
+            let badge = document.getElementById('sleepFeedbackBadge');
+            if (dayData.sleep && dayData.sleep.hours !== undefined) {
+                let hrs = dayData.sleep.hours;
+                document.getElementById('sleepStartInput').value = dayData.sleep.start || '';
+                document.getElementById('sleepEndInput').value = dayData.sleep.end || '';
+
+                if (hrs < 6) {
+                    badge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-700";
+                    badge.textContent = `Ngủ ${hrs.toFixed(1)}h (Thiếu ngủ)`;
+                } else if (hrs >= 6 && hrs < 7) {
+                    badge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700";
+                    badge.textContent = `Ngủ ${hrs.toFixed(1)}h (Tạm ổn)`;
+                } else {
+                    badge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700";
+                    badge.textContent = `Ngủ ${hrs.toFixed(1)}h (Đạt chuẩn)`;
+                }
+            } else {
+                document.getElementById('sleepStartInput').value = '';
+                document.getElementById('sleepEndInput').value = '';
+                badge.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600";
+                badge.textContent = "Chưa nhập";
+            }
+
+            const foodContainer = document.getElementById('foodListContainer');
+            if (dayData.foods.length === 0) {
+                foodContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Chưa có dữ liệu ăn uống hôm nay.</p>`;
+            } else {
+                foodContainer.innerHTML = '';
+                dayData.foods.forEach((food, idx) => {
+                    let mealBadgeClass = "bg-slate-100 text-slate-700 border-slate-200";
+
+                    let div = document.createElement('div');
+                    div.className = 'flex justify-between items-center p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs';
+                    div.innerHTML = `
+                        <div class="space-y-1">
+                            <div class="flex items-center space-x-2">
+                                ${food.meal ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold border ${mealBadgeClass}">Buổi ${food.meal}</span>` : ''}
+                                <span class="font-bold text-slate-800 text-sm">${food.name}</span>
+                            </div>
+                            <div class="text-slate-500 text-[11px] flex items-center space-x-2">
+                                <span>Calo: <b class="text-slate-700">${Math.round(food.cal)}</b> kcal</span>
+                                <span>|</span>
+                                <span>P: <b>${food.p}g</b> - C: <b>${food.c}g</b> - F: <b>${food.f}g</b></span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="editFood(${idx})" class="text-blue-600 hover:text-blue-800 font-semibold text-xs px-2 py-1 rounded hover:bg-blue-50 transition">Sửa</button>
+                            <button onclick="removeFood(${idx})" class="text-rose-600 hover:text-rose-800 font-semibold text-xs px-2 py-1 rounded hover:bg-rose-50 transition">Xóa</button>
+                        </div>
+                    `;
+                    foodContainer.appendChild(div);
+                });
+            }
+
+            const workoutContainer = document.getElementById('workoutListContainer');
+            const progressWrap = document.getElementById('workoutProgressWrap');
+            if (dayData.workouts.length === 0) {
+                workoutContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-16">Hôm nay nghỉ ngơi / Đi bộ nhẹ theo kế hoạch.</p>`;
+                progressWrap.classList.add('hidden');
+            } else {
+                let doneCount = dayData.workouts.filter(w => w.done).length;
+                let totalCount = dayData.workouts.length;
+                let pct = Math.round((doneCount / totalCount) * 100);
+
+                progressWrap.classList.remove('hidden');
+                document.getElementById('workoutProgressText').textContent = `Tiến độ: ${doneCount}/${totalCount} bài (${pct}%)`;
+                let badge = document.getElementById('workoutProgressBadge');
+                let bar = document.getElementById('workoutProgressBar');
+                bar.style.width = `${pct}%`;
+
+                // Màu sắc đổi động theo % hoàn thành: đỏ (mới bắt đầu) -> cam -> xanh dương -> xanh lá (100%)
+                let colors = getProgressTierColors(pct);
+                badge.textContent = pct === 100 ? "✅ Hoàn thành 100%" : `${pct}%`;
+                badge.className = `text-[10px] font-bold px-2 py-0.5 rounded ${colors.badge}`;
+                bar.className = `h-full rounded-full transition-all duration-300 ${colors.bar}`;
+
+                workoutContainer.innerHTML = '';
+                dayData.workouts.forEach((w, idx) => {
+                    let div = document.createElement('div');
+                    div.className = `p-3 border rounded-lg text-xs transition space-y-2 ${w.done ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`;
+                    let lastLogText = (w.actualWeight !== undefined && w.actualWeight !== null && w.actualWeight !== '')
+                        ? `<span class="text-[10px] text-blue-600 font-semibold">Đã ghi: ${w.actualWeight}kg x ${w.actualReps || '?'} reps</span>`
+                        : `<span class="text-[10px] text-slate-400">Chưa ghi mức tạ</span>`;
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <label class="flex items-center space-x-2.5 cursor-pointer flex-1">
+                                <input type="checkbox" ${w.done ? 'checked' : ''} onchange="toggleWorkoutDone(${idx})" class="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4">
+                                <span class="font-semibold text-sm ${w.done ? 'line-through text-slate-400' : 'text-slate-700'}">${w.name}</span>
+                            </label>
+                            <button onclick="removeWorkout(${idx})" class="text-slate-400 hover:text-rose-600 font-bold px-2 py-1">Xóa</button>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap pl-6">
+                            ${lastLogText}
+                            <input type="number" step="any" min="0" id="workoutWeight-${idx}" placeholder="Mức tạ (kg)" value="${w.actualWeight !== undefined && w.actualWeight !== null ? w.actualWeight : ''}" class="w-24 text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="number" step="any" min="0" id="workoutReps-${idx}" placeholder="Số reps" value="${w.actualReps !== undefined && w.actualReps !== null ? w.actualReps : ''}" class="w-20 text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <button onclick="logWorkoutProgress(${idx})" class="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg text-[11px] font-semibold transition">Lưu tiến độ</button>
+                        </div>
+                    `;
+                    workoutContainer.appendChild(div);
+                });
+            }
+
+            const todoContainer = document.getElementById('todoListContainer');
+            todoContainer.innerHTML = '';
+            dayData.todos.forEach((todo, idx) => {
+                let div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs';
+                div.innerHTML = `
+                    <label class="flex items-center space-x-2.5 cursor-pointer flex-1">
+                        <input type="checkbox" ${todo.done ? 'checked' : ''} onchange="toggleTodo(${idx})" class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4">
+                        <span class="${todo.done ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}">${todo.text}</span>
+                    </label>
+                    <button onclick="removeTodo(${idx})" class="text-slate-400 hover:text-rose-600 font-bold px-1">✕</button>
+                `;
+                todoContainer.appendChild(div);
+            });
+
+            const libraryPanel = document.getElementById('libraryPanel');
+            if (libraryPanel && !libraryPanel.classList.contains('hidden')) {
+                document.getElementById('libraryTargetDay').textContent = document.getElementById('workoutDateBadge').textContent.replace('Đang chọn: ', '');
+            }
+
+            saveToLocalStorage();
+            updateWeightChart();
+        }
+
+        function saveSleepData() {
+            let startVal = document.getElementById('sleepStartInput').value;
+            let endVal = document.getElementById('sleepEndInput').value;
+
+            if (!startVal || !endVal) {
+                showToast("Vui lòng chọn cả giờ đi ngủ và giờ thức dậy!", "error");
+                return;
+            }
+
+            let [startH, startM] = startVal.split(':').map(Number);
+            let [endH, endM] = endVal.split(':').map(Number);
+
+            let startDate = new Date(2000, 0, 1, startH, startM);
+            let endDate = new Date(2000, 0, 1, endH, endM);
+
+            if (endDate <= startDate) {
+                endDate.setDate(endDate.getDate() + 1);
+            }
+
+            let diffMs = endDate - startDate;
+            let totalHours = diffMs / (1000 * 60 * 60);
+
+            ensureDayData(selectedDateKey);
+            appData[selectedDateKey].sleep = {
+                start: startVal,
+                end: endVal,
+                hours: totalHours
+            };
+
+            renderSelectedDayDetails();
+            showToast("Đã lưu dữ liệu giấc ngủ!");
+        }
+
+        let editingFoodIndex = null;
+
+        function clearFoodForm() {
+            document.getElementById('foodNameInput').value = '';
+            document.getElementById('foodCalInput').value = '';
+            document.getElementById('foodPInput').value = '';
+            document.getElementById('foodCInput').value = '';
+            document.getElementById('foodFInput').value = '';
+        }
+
+        function addManualFood() {
+            const name = document.getElementById('foodNameInput').value.trim();
+            const meal = document.getElementById('foodMealSelect').value;
+            const cal = parseFloat(document.getElementById('foodCalInput').value) || 0;
+            const p = parseFloat(document.getElementById('foodPInput').value) || 0;
+            const c = parseFloat(document.getElementById('foodCInput').value) || 0;
+            const f = parseFloat(document.getElementById('foodFInput').value) || 0;
+
+            if (!name) {
+                showToast("Vui lòng nhập tên món ăn!", "error");
+                return;
+            }
+
+            ensureDayData(selectedDateKey);
+
+            if (editingFoodIndex !== null) {
+                appData[selectedDateKey].foods[editingFoodIndex] = { name: name, meal: meal, cal: cal, p: p, c: c, f: f };
+                showToast(`Đã cập nhật món "${name}"`);
+                cancelEditFood();
+            } else {
+                appData[selectedDateKey].foods.push({
+                    name: name, meal: meal, cal: cal, p: p, c: c, f: f
+                });
+                showToast(`Đã thêm món "${name}"`);
+            }
+
+            clearFoodForm();
+            renderSelectedDayDetails();
+        }
+
+        function editFood(idx) {
+            const food = appData[selectedDateKey].foods[idx];
+            if (!food) return;
+            editingFoodIndex = idx;
+            document.getElementById('foodNameInput').value = food.name;
+            document.getElementById('foodMealSelect').value = food.meal || 'Trưa';
+            document.getElementById('foodCalInput').value = food.cal;
+            document.getElementById('foodPInput').value = food.p;
+            document.getElementById('foodCInput').value = food.c;
+            document.getElementById('foodFInput').value = food.f;
+
+            document.getElementById('foodSubmitBtn').textContent = 'Lưu Thay Đổi';
+            document.getElementById('foodCancelBtn').classList.remove('hidden');
+            document.getElementById('foodNameInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function cancelEditFood() {
+            editingFoodIndex = null;
+            document.getElementById('foodSubmitBtn').textContent = 'Thêm Món Vào Ngày Này';
+            document.getElementById('foodCancelBtn').classList.add('hidden');
+            clearFoodForm();
+        }
+
+        function removeFood(idx) { 
+            appData[selectedDateKey].foods.splice(idx, 1); 
+            if (editingFoodIndex === idx) cancelEditFood();
+            renderSelectedDayDetails(); 
+            showToast("Đã xóa món ăn");
+        }
+
+        // MÓN ĂN YÊU THÍCH / QUICK ADD
+        let favoriteFoods = JSON.parse(localStorage.getItem('nexus_favorite_foods')) || [];
+
+        function saveFavoritesToLocalStorage() {
+            localStorage.setItem('nexus_favorite_foods', JSON.stringify(favoriteFoods));
+        }
+
+        function saveCurrentAsFavorite() {
+            const name = document.getElementById('foodNameInput').value.trim();
+            const cal = parseFloat(document.getElementById('foodCalInput').value) || 0;
+            const p = parseFloat(document.getElementById('foodPInput').value) || 0;
+            const c = parseFloat(document.getElementById('foodCInput').value) || 0;
+            const f = parseFloat(document.getElementById('foodFInput').value) || 0;
+
+            if (!name) {
+                showToast("Vui lòng nhập tên món ăn trước khi lưu yêu thích!", "error");
+                return;
+            }
+
+            let existingIdx = favoriteFoods.findIndex(fav => fav.name.toLowerCase() === name.toLowerCase());
+            let favItem = { name, cal, p, c, f };
+            if (existingIdx >= 0) {
+                favoriteFoods[existingIdx] = favItem;
+                showToast(`Đã cập nhật "${name}" trong danh sách yêu thích`);
+            } else {
+                favoriteFoods.push(favItem);
+                showToast(`Đã lưu "${name}" vào danh sách yêu thích`);
+            }
+            saveFavoritesToLocalStorage();
+            renderFavoriteFoods();
+        }
+
+        function quickAddFavorite(idx) {
+            const fav = favoriteFoods[idx];
+            if (!fav) return;
+            ensureDayData(selectedDateKey);
+            const meal = document.getElementById('foodMealSelect').value || 'Trưa';
+            appData[selectedDateKey].foods.push({ name: fav.name, meal: meal, cal: fav.cal, p: fav.p, c: fav.c, f: fav.f });
+            renderSelectedDayDetails();
+            showToast(`Đã thêm nhanh món "${fav.name}"`);
+        }
+
+        function removeFavorite(idx) {
+            const fav = favoriteFoods[idx];
+            favoriteFoods.splice(idx, 1);
+            saveFavoritesToLocalStorage();
+            renderFavoriteFoods();
+            if (fav) showToast(`Đã xóa "${fav.name}" khỏi danh sách yêu thích`);
+        }
+
+        function renderFavoriteFoods() {
+            const container = document.getElementById('favoriteFoodListContainer');
+            if (!container) return;
+            if (favoriteFoods.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Chưa có món yêu thích nào. Nhập món ăn ở trên rồi bấm "Lưu món này vào danh sách yêu thích".</p>`;
+                return;
+            }
+            container.innerHTML = '';
+            favoriteFoods.forEach((fav, idx) => {
+                let div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs';
+                div.innerHTML = `
+                    <div>
+                        <span class="font-bold text-slate-800 text-sm">${fav.name}</span>
+                        <div class="text-slate-500 text-[11px]">Calo: <b class="text-slate-700">${Math.round(fav.cal)}</b> kcal · P:${fav.p}g C:${fav.c}g F:${fav.f}g</div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        <button onclick="quickAddFavorite(${idx})" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-[11px] font-semibold transition">+ Thêm</button>
+                        <button onclick="removeFavorite(${idx})" class="text-slate-400 hover:text-rose-600 font-bold px-2 py-1">✕</button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function addWorkoutPrompt() {
+            let name = prompt("Nhập tên buổi tập / bài tập:");
+            if (name && name.trim()) {
+                ensureDayData(selectedDateKey);
+                appData[selectedDateKey].workouts.push({ name: name.trim(), done: false });
+                renderSelectedDayDetails();
+                showToast("Đã thêm bài tập mới");
+            }
+        }
+        // Trả về màu sắc (bar + badge) tương ứng với % hoàn thành — dùng cho các thanh tiến độ dạng "nhiệm vụ"
+        function getProgressTierColors(pct) {
+            if (pct >= 100) return { bar: "bg-emerald-500", badge: "bg-emerald-100 text-emerald-700" };
+            if (pct >= 70) return { bar: "bg-blue-500", badge: "bg-blue-100 text-blue-700" };
+            if (pct >= 40) return { bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700" };
+            if (pct > 0) return { bar: "bg-rose-500", badge: "bg-rose-100 text-rose-700" };
+            return { bar: "bg-slate-300", badge: "bg-slate-100 text-slate-500" };
+        }
+
+        function removeWorkout(idx) { appData[selectedDateKey].workouts.splice(idx, 1); renderSelectedDayDetails(); }
+
+        function toggleWorkoutDone(idx) {
+            ensureDayData(selectedDateKey);
+            let dayData = appData[selectedDateKey];
+            dayData.workouts[idx].done = !dayData.workouts[idx].done;
+            renderSelectedDayDetails();
+
+            let totalCount = dayData.workouts.length;
+            let doneCount = dayData.workouts.filter(w => w.done).length;
+            if (totalCount > 0 && doneCount === totalCount) {
+                showToast("🎉 Hoàn thành 100% buổi tập hôm nay!");
+                sendLocalNotification("Nexus Hub 💪", "Bạn đã hoàn thành 100% buổi tập hôm nay. Làm tốt lắm!");
+            }
+        }
+
+        // GHI NHẬN MỨC TẠ / REPS THỰC TẾ (PROGRESSIVE OVERLOAD)
+        function logWorkoutProgress(idx) {
+            ensureDayData(selectedDateKey);
+            let weightVal = document.getElementById(`workoutWeight-${idx}`).value;
+            let repsVal = document.getElementById(`workoutReps-${idx}`).value;
+
+            let dayData = appData[selectedDateKey];
+            if (!dayData.workouts[idx]) return;
+
+            dayData.workouts[idx].actualWeight = weightVal === '' ? null : parseFloat(weightVal);
+            dayData.workouts[idx].actualReps = repsVal === '' ? null : parseFloat(repsVal);
+
+            renderSelectedDayDetails();
+            showToast(`Đã ghi tiến độ cho "${dayData.workouts[idx].name}"`);
+        }
+
+        function getExerciseBaseName(name) {
+            return name.split(' - ')[0].trim();
+        }
+
+        let progressChartInstance = null;
+
+        function renderProgressExerciseOptions() {
+            const select = document.getElementById('progressExerciseSelect');
+            if (!select) return;
+            let prevValue = select.value;
+
+            let names = new Set();
+            Object.keys(appData).forEach(key => {
+                let dd = appData[key];
+                if (!dd || !dd.workouts) return;
+                dd.workouts.forEach(w => {
+                    if (w.actualWeight !== undefined && w.actualWeight !== null && w.actualWeight !== '') {
+                        names.add(getExerciseBaseName(w.name));
+                    }
+                });
+            });
+
+            let sortedNames = Array.from(names).sort();
+            select.innerHTML = '';
+            if (sortedNames.length === 0) {
+                let opt = document.createElement('option');
+                opt.value = '';
+                opt.textContent = 'Chưa có dữ liệu';
+                select.appendChild(opt);
+                return;
+            }
+            sortedNames.forEach(n => {
+                let opt = document.createElement('option');
+                opt.value = n;
+                opt.textContent = n;
+                select.appendChild(opt);
+            });
+            if (sortedNames.includes(prevValue)) select.value = prevValue;
+        }
+
+        function updateProgressChart() {
+            const select = document.getElementById('progressExerciseSelect');
+            const emptyState = document.getElementById('progressChartEmptyState');
+            const chartWrap = document.getElementById('progressChartWrap');
+            if (!select || !select.value) {
+                emptyState.classList.remove('hidden');
+                chartWrap.classList.add('hidden');
+                return;
+            }
+
+            let exerciseName = select.value;
+            let points = [];
+            Object.keys(appData).sort().forEach(key => {
+                let dd = appData[key];
+                if (!dd || !dd.workouts) return;
+                dd.workouts.forEach(w => {
+                    if (w.actualWeight !== undefined && w.actualWeight !== null && w.actualWeight !== '' && getExerciseBaseName(w.name) === exerciseName) {
+                        points.push({ date: key, weight: w.actualWeight, reps: w.actualReps });
+                    }
+                });
+            });
+
+            if (points.length === 0) {
+                emptyState.classList.remove('hidden');
+                chartWrap.classList.add('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            chartWrap.classList.remove('hidden');
+
+            let labels = points.map(p => p.date);
+            let weights = points.map(p => p.weight);
+            let repsLabels = points.map(p => p.reps !== undefined && p.reps !== null ? `${p.reps} reps` : '');
+
+            if (progressChartInstance) {
+                progressChartInstance.data.labels = labels;
+                progressChartInstance.data.datasets[0].data = weights;
+                progressChartInstance.data.datasets[0].label = `${exerciseName} - Mức tạ (kg)`;
+                progressChartInstance._repsLabels = repsLabels;
+                progressChartInstance.update();
+            } else {
+                const ctx = document.getElementById('progressChart').getContext('2d');
+                progressChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `${exerciseName} - Mức tạ (kg)`,
+                            data: weights,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: false, title: { display: true, text: 'kg' } } },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: function(context) {
+                                        let rl = context.chart._repsLabels;
+                                        return rl && rl[context.dataIndex] ? rl[context.dataIndex] : '';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                progressChartInstance._repsLabels = repsLabels;
+            }
+        }
+
+        // THƯ VIỆN BÀI TẬP THEO NHÓM CƠ (DÙNG ĐỂ TẬP BÙ)
+        const exerciseLibrary = {
+            "Ngực": [
+                "Bench Press - 4 sets x 8-10 reps",
+                "Incline Dumbbell Press - 3 sets x 10-12 reps",
+                "Push-up - 3 sets x 15-20 reps",
+                "Cable Fly - 3 sets x 12-15 reps",
+                "Decline Bench Press - 3 sets x 8-10 reps",
+                "Dumbbell Fly - 3 sets x 12-15 reps",
+                "Dips (ngực) - 3 sets x 10-12 reps",
+                "Incline Barbell Press - 3 sets x 8-10 reps",
+                "Pec Deck Machine - 3 sets x 12-15 reps"
+            ],
+            "Lưng": [
+                "Lat Pulldown - 4 sets x 8-10 reps",
+                "Barbell Row - 3 sets x 10-12 reps",
+                "Seated Cable Row - 3 sets x 10-12 reps",
+                "Deadlift - 3 sets x 6-8 reps",
+                "Pull-up - 3 sets x 8-10 reps",
+                "T-Bar Row - 3 sets x 10-12 reps",
+                "Single-arm Dumbbell Row - 3 sets x 10-12 reps mỗi bên",
+                "Hyperextension - 3 sets x 15 reps",
+                "Straight Arm Pulldown - 3 sets x 12-15 reps"
+            ],
+            "Vai": [
+                "Shoulder Press - 3 sets x 10-12 reps",
+                "Lateral Raise - 3 sets x 12-15 reps",
+                "Rear Delt Fly - 3 sets x 12-15 reps",
+                "Face Pull - 3 sets x 15 reps",
+                "Arnold Press - 3 sets x 10-12 reps",
+                "Upright Row - 3 sets x 12 reps",
+                "Cable Lateral Raise - 3 sets x 12-15 reps",
+                "Front Raise - 3 sets x 12-15 reps",
+                "Shrug - 3 sets x 12-15 reps"
+            ],
+            "Chân": [
+                "Squat - 4 sets x 8-10 reps",
+                "Romanian Deadlift - 3 sets x 10-12 reps",
+                "Leg Press - 3 sets x 12-15 reps",
+                "Standing Calf Raise - 3 sets x 15-20 reps",
+                "Walking Lunge - 3 sets x 12 reps mỗi chân",
+                "Leg Extension - 3 sets x 12-15 reps",
+                "Leg Curl - 3 sets x 12-15 reps",
+                "Hip Thrust - 3 sets x 10-12 reps",
+                "Front Squat - 3 sets x 8-10 reps",
+                "Seated Calf Raise - 3 sets x 15-20 reps"
+            ],
+            "Mông (Glutes)": [
+                "Hip Thrust - 4 sets x 10-12 reps",
+                "Glute Bridge - 3 sets x 15 reps",
+                "Cable Kickback - 3 sets x 12-15 reps mỗi bên",
+                "Sumo Squat - 3 sets x 12 reps",
+                "Bulgarian Split Squat - 3 sets x 10-12 reps mỗi chân",
+                "Sumo Deadlift - 3 sets x 8-10 reps"
+            ],
+            "Tay (Trước/Sau)": [
+                "Bicep Curl - 3 sets x 12-15 reps",
+                "Hammer Curl - 3 sets x 12 reps",
+                "Tricep Pushdown - 3 sets x 12-15 reps",
+                "Overhead Tricep Extension - 3 sets x 12 reps",
+                "Preacher Curl - 3 sets x 10-12 reps",
+                "Cable Curl - 3 sets x 12-15 reps",
+                "Close-grip Bench Press - 3 sets x 10 reps",
+                "Skull Crusher - 3 sets x 12 reps",
+                "Concentration Curl - 3 sets x 12 reps"
+            ],
+            "Bụng / Core": [
+                "Plank - 3 sets x 45-60 giây",
+                "Crunch - 3 sets x 15-20 reps",
+                "Leg Raise - 3 sets x 12-15 reps",
+                "Russian Twist - 3 sets x 20 reps",
+                "Mountain Climber - 3 sets x 30 giây",
+                "Bicycle Crunch - 3 sets x 20 reps",
+                "Hanging Leg Raise - 3 sets x 12 reps",
+                "Cable Crunch - 3 sets x 15 reps",
+                "Side Plank - 3 sets x 30-45 giây mỗi bên"
+            ],
+            "Cardio": [
+                "Chạy bộ - 20 phút",
+                "Đạp xe - 25 phút",
+                "Nhảy dây - 15 phút",
+                "HIIT - 15 phút",
+                "Bơi lội - 30 phút",
+                "Leo cầu thang - 15 phút",
+                "Rowing Machine - 20 phút",
+                "Máy elliptical - 20 phút",
+                "Đi bộ nhanh - 30 phút"
+            ],
+            "Toàn Thân / Compound": [
+                "Burpee - 3 sets x 15 reps",
+                "Kettlebell Swing - 3 sets x 15-20 reps",
+                "Clean and Press - 3 sets x 8-10 reps",
+                "Thruster - 3 sets x 10-12 reps",
+                "Battle Rope - 3 sets x 30 giây"
+            ]
+        };
+        let activeMuscleGroup = "Ngực";
+
+        function toggleLibraryPanel() {
+            const panel = document.getElementById('libraryPanel');
+            const icon = document.getElementById('libraryToggleIcon');
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                icon.textContent = "Thu gọn";
+                renderMuscleLibrary();
+            } else {
+                panel.classList.add('hidden');
+                icon.textContent = "Mở thư viện";
+            }
+        }
+
+        function renderMuscleLibrary() {
+            const tabsContainer = document.getElementById('muscleGroupTabs');
+            tabsContainer.innerHTML = '';
+            Object.keys(exerciseLibrary).forEach(group => {
+                let isActive = group === activeMuscleGroup;
+                let btn = document.createElement('button');
+                btn.className = `px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${isActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`;
+                btn.textContent = group;
+                btn.onclick = () => { activeMuscleGroup = group; renderMuscleLibrary(); };
+                tabsContainer.appendChild(btn);
+            });
+
+            const listContainer = document.getElementById('muscleExerciseList');
+            listContainer.innerHTML = '';
+            exerciseLibrary[activeMuscleGroup].forEach((ex, i) => {
+                let div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs';
+                div.innerHTML = `
+                    <span class="text-slate-700 font-medium">${ex}</span>
+                    <button class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-[11px] font-semibold transition">+ Thêm</button>
+                `;
+                div.querySelector('button').onclick = () => addFromLibrary(ex);
+                listContainer.appendChild(div);
+            });
+
+            let badgeText = document.getElementById('workoutDateBadge').textContent.replace('Đang chọn: ', '');
+            document.getElementById('libraryTargetDay').textContent = badgeText;
+        }
+
+        function addFromLibrary(exerciseName) {
+            ensureDayData(selectedDateKey);
+            appData[selectedDateKey].workouts.push({ name: exerciseName, done: false });
+            renderSelectedDayDetails();
+            showToast(`Đã thêm bài tập bù: "${exerciseName}"`);
+        }
+
+        function saveWeight() {
+            let val = parseFloat(document.getElementById('weightInput').value);
+            if (!isNaN(val)) {
+                ensureDayData(selectedDateKey);
+                appData[selectedDateKey].weight = val;
+                renderSelectedDayDetails();
+                showToast(`Đã lưu cân nặng: ${val} kg`);
+            }
+        }
+
+        function toggleTodo(idx) { appData[selectedDateKey].todos[idx].done = !appData[selectedDateKey].todos[idx].done; renderSelectedDayDetails(); }
+        function removeTodo(idx) { appData[selectedDateKey].todos.splice(idx, 1); renderSelectedDayDetails(); }
+        function addNewTaskPrompt() {
+            let txt = prompt("Nhập thói quen / việc cần làm mới:");
+            if (txt && txt.trim()) {
+                ensureDayData(selectedDateKey);
+                appData[selectedDateKey].todos.push({ text: txt.trim(), done: false });
+                renderSelectedDayDetails();
+                showToast("Đã thêm thói quen mới");
+            }
+        }
+
+        function initWeightChart() {
+            const ctx = document.getElementById('weightChart').getContext('2d');
+            weightChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { 
+                    labels: [], 
+                    datasets: [{ 
+                        label: 'Cân nặng (kg)', 
+                        data: [], 
+                        borderColor: '#2563eb', 
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)', 
+                        tension: 0.3, 
+                        fill: true 
+                    }] 
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } }
+            });
+            updateWeightChart();
+        }
+
+        function updateWeightChart() {
+            if (!weightChartInstance) return;
+            let labels = [], weights = [];
+            weeksData.forEach(week => {
+                week.days.forEach(day => {
+                    let dData = appData[day.key];
+                    if (dData && dData.weight) {
+                        labels.push(day.display);
+                        weights.push(dData.weight);
+                    }
+                });
+            });
+            weightChartInstance.data.labels = labels;
+            weightChartInstance.data.datasets[0].data = weights;
+            weightChartInstance.update();
+        }
+
+        function saveToLocalStorage() { localStorage.setItem('nexus_tracker_v21', JSON.stringify(appData)); }
+        function exportData() {
+            let backup = { appData: appData, userTargets: userTargets, favoriteFoods: favoriteFoods };
+            let blob = new Blob([JSON.stringify(backup, null, 2)], {type : 'application/json'});
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a'); a.href = url; a.download = `nexus_backup.json`; a.click();
+            showToast("Đã xuất file sao lưu!");
+        }
+        function importData(e) {
+            let reader = new FileReader();
+            reader.onload = function(evt) {
+                let parsed = JSON.parse(evt.target.result);
+                // Hỗ trợ cả file backup cũ (chỉ có appData) và file backup mới (có cả userTargets)
+                if (parsed.appData) {
+                    appData = parsed.appData;
+                    if (parsed.userTargets) {
+                        userTargets = parsed.userTargets;
+                        localStorage.setItem('nexus_user_targets', JSON.stringify(userTargets));
+                    }
+                    if (parsed.favoriteFoods) {
+                        favoriteFoods = parsed.favoriteFoods;
+                        saveFavoritesToLocalStorage();
+                    }
+                } else {
+                    appData = parsed;
+                }
+                saveToLocalStorage();
+                initTimeline();
+                showToast("Đã nhập dữ liệu thành công!");
+            };
+            reader.readAsText(e.target.files[0]);
+        }
+        function resetData() {
+            if (confirm("Xóa toàn bộ dữ liệu?")) { 
+                localStorage.removeItem('nexus_tracker_v21'); 
+                appData = {}; 
+                initTimeline(); 
+                showToast("Đã xóa toàn bộ dữ liệu", "error");
+            }
+        }
+
+        // ===== PWA: ĐĂNG KÝ SERVICE WORKER + LOCAL NOTIFICATION =====
+        // Lưu ý quan trọng: đây là "local notification" (app tự bắn thông báo khi đang mở/chạy nền gần đây),
+        // KHÔNG PHẢI push notification thật từ server khi app đã tắt hẳn — kiểu đó cần có backend server riêng
+        // để gửi tín hiệu tới thiết bị, việc mà 1 file HTML tĩnh chạy hoàn toàn trên trình duyệt không làm được.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch((err) => {
+                    console.log('Không đăng ký được Service Worker (có thể do đang mở file trực tiếp, chưa host qua HTTPS):', err);
+                });
+            });
+        }
+
+        function requestNotificationPermission() {
+            if (!('Notification' in window)) return;
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        }
+
+        function sendLocalNotification(title, body) {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title, body });
+            } else {
+                new Notification(title, { body, icon: 'icon-192.png' });
+            }
+        }
+
+        window.onload = initTimeline;
+    </script>
+</body>
+</html>
